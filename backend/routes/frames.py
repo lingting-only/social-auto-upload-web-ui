@@ -2,7 +2,7 @@ import os
 import shutil
 import tempfile
 
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, jsonify, send_file, current_app
 from pathlib import Path
 
 from conf import BASE_DIR
@@ -180,6 +180,49 @@ def get_frame_image():
     return send_file(image_path, mimetype='image/jpeg')
 
 
+@frames_bp.post('/api/frames/save-cover')
+def save_frame_as_cover():
+    """把抽帧缓存图按 4 个比例中心裁剪，保存为封面文件（covers/ 目录，不入素材库）。
+
+    Body: {"material_id": "...", "seconds": 10}
+    裁剪规格与前端 CoverEditorDialog 手动裁剪一致（长边 1920，JPEG q=92）：
+      landscape_43  → 1920x1440 (coverLandscape)
+      landscape_169 → 1920x1080 (coverLandscape169)
+      portrait_34   → 1440x1920 (coverPortrait)
+      portrait_916  → 1080x1920 (coverPortrait916)
+    返回 {landscape_43, landscape_169, portrait_34, portrait_916} 4 个封面对象
+    （与 /covers/upload 同构）。批量发布添加视频时，前端自动用推荐帧裁出全比例封面。
+    """
+    data = request.get_json(force=True)
+    material_id = data.get('material_id', '')
+    if not material_id:
+        return jsonify({"code": 400, "msg": "material_id is required"}), 400
+    try:
+        seconds = int(data.get('seconds', 0))
+    except (TypeError, ValueError):
+        return jsonify({"code": 400, "msg": "seconds must be integer"}), 400
+
+    full_path = _resolve_material_video(material_id)
+    if not full_path:
+        return jsonify({"code": 404, "msg": "视频素材已失效"}), 404
+
+    image_path = get_frame_image_path(BASE_DIR, full_path, seconds, thumbnail=False)
+    if not image_path or not os.path.isfile(image_path):
+        return jsonify({"code": 404, "msg": "帧不存在，请先抽帧"}), 404
+
+    from PIL import Image
+    from services.cover_crop import crop_image_to_covers
+
+    try:
+        src = Image.open(image_path)
+        result = crop_image_to_covers(src, filename_prefix=f"frame_{seconds}s")
+    except Exception as e:
+        current_app.logger.warning(f"[save-cover] 裁剪失败: {e}")
+        return jsonify({"code": 500, "msg": f"封面裁剪失败: {e}"}), 500
+
+    return jsonify({"code": 200, "data": result})
+
+
 @frames_bp.post('/api/clear-cache')
 def clear_cache():
     """Clear cached data: extracted frames, old logs, etc."""
@@ -252,9 +295,12 @@ def clear_cache():
 def system_info():
     """Return version and cache size info."""
     # Read version from versions file
+    # 候选顺序：用户数据目录上级(开发模式仓库根) → 后端代码目录上级(打包模式 resources 根) → 数据目录
     version = 'unknown'
+    _backend_root = str(Path(__file__).resolve().parent.parent)
     for candidate in [
         os.path.join(str(BASE_DIR), '..', 'versions'),
+        os.path.join(_backend_root, '..', 'versions'),
         os.path.join(str(BASE_DIR), 'versions'),
     ]:
         if os.path.isfile(candidate):
@@ -335,6 +381,8 @@ def system_info():
         "code": 200,
         "data": {
             "version": version,
+            "data_dir": str(BASE_DIR),
+            "profile": os.environ.get('SAU_PROFILE_NAME', ''),
             "cache": {
                 "frames": {"count": frames_count, "size": frames_size},
                 "logs": {"count": logs_count, "size": logs_size, "oldCount": logs_old_count},

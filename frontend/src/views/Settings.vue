@@ -76,6 +76,15 @@
           </el-select>
         </div>
       </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">批量发布任务间隔（分钟）</span>
+          <span class="setting-desc">批量发布时每个发布任务完成后的等待时间，用于避免平台风控。0 表示不等待、连续执行</span>
+        </div>
+        <div class="setting-control">
+          <el-input-number v-model="settings.batchTaskInterval" :min="0" :max="120" controls-position="right" style="width: 120px" />
+        </div>
+      </div>
     </div>
 
     <!-- 渠道黑名单 -->
@@ -259,6 +268,8 @@
         <div class="tech-section">
           <h4 class="tech-section-title">版本</h4>
           <div class="version-badge">v{{ appVersion }}</div>
+          <div v-if="profileName" class="data-dir">当前账户：{{ profileName }}</div>
+          <div v-if="dataDir" class="data-dir" :title="dataDir">数据目录：{{ dataDir }}</div>
         </div>
         <div class="tech-section">
           <h4 class="tech-section-title">前端</h4>
@@ -370,6 +381,8 @@ const loading = ref(false)
 const saving = ref(false)
 const clearingCache = ref(false)
 const appVersion = ref('--')
+const dataDir = ref('')
+const profileName = ref('')
 const cacheInfo = reactive({
   frames: { count: 0, size: 0 },
   logs: { count: 0, size: 0, oldCount: 0 },
@@ -382,6 +395,8 @@ const fetchSystemInfo = async () => {
     const res = await http.get('/api/system-info')
     if (res.code === 200 && res.data) {
       appVersion.value = res.data.version || '--'
+      dataDir.value = res.data.data_dir || ''
+      profileName.value = res.data.profile || ''
       if (res.data.cache) {
         cacheInfo.frames = res.data.cache.frames || { count: 0, size: 0 }
         cacheInfo.logs = res.data.cache.logs || { count: 0, size: 0, oldCount: 0 }
@@ -439,6 +454,7 @@ const settings = reactive({
   autoSaveDraft: true,
   autoSaveInterval: 10,
   accountCheckMode: 'pre-publish',
+  batchTaskInterval: 0,
   storage: {
     type: 'local',
     s3: { endpoint: '', access_key: '', secret_key: '', bucket: '', region: '' },
@@ -496,6 +512,7 @@ const fetchSettings = async () => {
       if (res.data.autoSaveDraft !== undefined) settings.autoSaveDraft = res.data.autoSaveDraft
       if (res.data.autoSaveInterval !== undefined) settings.autoSaveInterval = res.data.autoSaveInterval
       if (res.data.accountCheckMode !== undefined) settings.accountCheckMode = res.data.accountCheckMode
+      if (res.data.batchTaskInterval !== undefined) settings.batchTaskInterval = res.data.batchTaskInterval
       if (res.data.storage) {
         settings.storage = { ...settings.storage, ...res.data.storage }
       }
@@ -536,6 +553,7 @@ const handleSave = async () => {
       autoSaveDraft: settings.autoSaveDraft,
       autoSaveInterval: settings.autoSaveInterval,
       accountCheckMode: settings.accountCheckMode,
+      batchTaskInterval: settings.batchTaskInterval,
       storage: settings.storage,
       feedbackEmail: settings.feedbackEmail,
     })
@@ -827,6 +845,18 @@ onMounted(() => {
         font-weight: 700;
         font-family: 'Fira Code', monospace;
         letter-spacing: 0.5px;
+      }
+
+      .data-dir {
+        margin-top: 8px;
+        font-size: 11px;
+        color: $text-muted;
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        direction: rtl; /* 长路径从左侧截断，保留末尾 */
+        text-align: left;
       }
 
       .tech-section-title {

@@ -22,6 +22,9 @@ import logoZhihu from '@/assets/logos/zhihu.png'
 import logoCsdn from '@/assets/logos/csdn.png'
 import logoVivo from '@/assets/logos/vivo.svg'
 import logoWeixinGzh from '@/assets/logos/weixin_gzh.png'
+import logoTaobaoGuanghe from '@/assets/logos/taobao_guanghe.png'
+import logoJingmai from '@/assets/logos/jingmai.png'
+import logoDayu from '@/assets/logos/dayu.png'
 
 import { WEIBO_CATEGORIES } from './weibo-categories'
 import { CHANNELS_MARK_TAGS, CHANNELS_SHOOT_REGIONS } from './channels-mark-tags'
@@ -32,6 +35,45 @@ import { CHANNELS_MARK_TAGS, CHANNELS_SHOOT_REGIONS } from './channels-mark-tags
  * 不去快手发布页查找下拉选项。视频和图集发布共用此约定。
  */
 export const DECLARATION_NONE = '内容无需添加声明'
+
+/**
+ * 批量设置·作品声明的两个统一语义选项。
+ * 各平台页面文案不同，批量设置只暴露「不做声明 / AI生成」，
+ * 写入时经 DECLARATION_FIELD_MAP 映射成各平台自己的字段 key + 选项文案。
+ */
+export const DECLARATION_BATCH_OPTIONS = [
+  { label: '不做声明', value: 'none' },
+  { label: 'AI生成', value: 'ai' },
+]
+
+/**
+ * 批量设置·作品声明映射表：platformKey → 各平台的声明字段与选项文案。
+ * - field: 该平台声明字段在 settingsFields / defaultSettings 里的 key
+ * - none:  「不做声明」对应的平台选项值（undefined 表示该平台无此选项，跳过）
+ * - ai:    「AI生成」对应的平台选项值（undefined 表示该平台无此选项，跳过）
+ * 值类型与平台字段一致：普通 select 是字符串，tencent_video 多选为数组，
+ * tiktok 的 aiContent 是开关布尔值。
+ */
+export const DECLARATION_FIELD_MAP = {
+  xiaohongshu: { field: 'aiContent', ai: '笔记含AI合成内容' },
+  channels: { field: 'channelsMarkTag', none: '无需标注', ai: '含AI生成内容' },
+  douyin: { field: 'aiContent', none: '无需添加自主声明', ai: '内容由AI生成' },
+  kuaishou: { field: 'aiContent', none: DECLARATION_NONE, ai: '内容为AI生成' },
+  bilibili: { field: 'creationDeclaration', none: '内容无需标注', ai: '含AI生成内容' },
+  baijiahao: { field: 'creationDeclaration', none: '无需声明', ai: '含AI生成内容' },
+  tiktok: { field: 'aiContent', none: false, ai: true },
+  tencent_video: { field: 'creationDeclaration', none: [], ai: ['内容由AI生成'] },
+  iqiyi: { field: 'creationDeclaration', none: '内容无需标注', ai: '含AI生成内容' },
+  weibo: { field: 'contentStatement2', none: '内容无需标注', ai: '含AI生成内容' },
+  alipay: { field: 'authorStatement', none: '内容无需标注', ai: '内容由AI生成' },
+  toutiao: { field: 'creationDeclaration', ai: 'AI生成' },
+  zhihu: { field: 'creationDeclaration', none: '内容无需标注', ai: '含 AI 生成内容' },
+  vivo: { field: 'vivoDeclaration', none: '内容无需标注', ai: '含AI生成内容' },
+  weixin_gzh: { field: 'gzhClaimSource', none: '无需声明', ai: '内容由AI生成' },
+  taobao_guanghe: { field: 'guangheClaim', none: '内容无需标注', ai: '含AI生成内容' },
+  jingmai: { field: 'jdDeclaration', none: '内容无需标注', ai: '含AI生成内容' },
+  dayu: { field: 'creationDeclaration', none: '无需标注', ai: 'AI生成' },
+}
 
 export const PLATFORMS = {
   XIAOHONGSHU: {
@@ -674,6 +716,177 @@ export const PLATFORMS = {
     ],
     defaultSettings: { title: '', description: '', isOriginal: false, gzhClaimSource: '', gzhCollectionName: '', gzhCollectionData: null, scheduleTime: '', videoFormat: '' },
   },
+  TAOBAO_GUANGHE: {
+    id: 18,
+    key: 'taobao_guanghe',
+    name: '淘宝光合',
+    shortName: '光合',
+    letter: '淘',
+    logo: logoTaobaoGuanghe,
+    color: '#FF5000',
+    bgColor: 'rgba(255, 80, 0, 0.15)',
+    cssClass: 'taobao_guanghe',
+    creatorUrl: 'https://creator.guanghe.taobao.com/',
+    settingsFields: [
+      // 创作者声明(平台必填,后端未传时默认「内容无需标注」)
+      { key: 'guangheClaim', label: '创作者声明', type: 'select', required: true,
+        placeholder: '请选择创作者声明',
+        options: [
+          { label: '内容无需标注', value: '内容无需标注' },
+          { label: '含AI生成内容', value: '含AI生成内容' },
+          { label: '含虚构演绎内容', value: '含虚构演绎内容' },
+          { label: '内容为转载', value: '内容为转载' },
+          { label: '个人观点，仅供参考', value: '个人观点，仅供参考' },
+          { label: '内容含营销信息', value: '内容含营销信息' },
+        ] },
+      { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间' },
+    ],
+    defaultSettings: { title: '', description: '', guangheClaim: '', guangheLinkType: '', guangheProducts: [], guangheShops: [], scheduleTime: '' },
+  },
+  JINGMAI: {
+    id: 19,
+    key: 'jingmai',
+    name: '京东京麦',
+    shortName: '京麦',
+    letter: '京',
+    logo: logoJingmai,
+    color: '#E1251B',
+    bgColor: 'rgba(225, 37, 27, 0.15)',
+    cssClass: 'jingmai',
+    creatorUrl: 'https://dr.jd.com/jm/',
+    hideFields: ['description', 'tags'],
+    // 创作声明 + 定时发布都走 settingsFields 通用渲染,与其他平台布局一致
+    settingsFields: [
+      { key: 'jdDeclaration', label: '创作声明', type: 'select',
+        placeholder: '请选择创作声明',
+        options: [
+          { label: '含AI生成内容', value: '含AI生成内容' },
+          { label: '含虚构演绎内容', value: '含虚构演绎内容' },
+          { label: '内容为转载', value: '内容为转载' },
+          { label: '个人观点,仅供参考', value: '个人观点,仅供参考' },
+          { label: '内容含营销广告', value: '内容含营销广告' },
+          { label: '内容无需标注', value: '内容无需标注' },
+        ] },
+      { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间' },
+    ],
+    defaultSettings: {
+      title: '',
+      description: '',
+      jdRelatedType: '',
+      jdProducts: [],
+      jdNovel: '',
+      jdDeclaration: '',
+      scheduleTime: '',
+    },
+  },
+  DAYU: {
+    id: 21,
+    key: 'dayu',
+    name: '大鱼号',
+    shortName: '大鱼',
+    letter: '鱼',
+    logo: logoDayu,
+    color: '#FA541C',
+    bgColor: 'rgba(250, 84, 28, 0.15)',
+    cssClass: 'dayu',
+    creatorUrl: 'https://mp.dayu.com/dashboard/index',
+    settingsFields: [
+      // 信息来源(页面必选单选,radio value 与文案一致)
+      { key: 'creationDeclaration', label: '信息来源', type: 'select', required: true, placeholder: '请选择信息来源', options: [
+        { label: '无需标注', value: '无需标注' },
+        { label: 'AI生成', value: 'AI生成' },
+        { label: '虚构演绎', value: '虚构演绎' },
+        { label: '营销信息', value: '营销信息' },
+        { label: '转载', value: '转载' },
+        { label: '个人观点', value: '个人观点' },
+        { label: '不适宜未成年人', value: '不适宜未成年人' },
+      ] },
+      // 转载联动字段:信息来源选「转载」时显示,大鱼号要求原文链接必填
+      { key: 'dayuRepostUrl', label: '原文链接', type: 'input', required: true, placeholder: '请输入原文链接(必填)', visibleWhen: { key: 'creationDeclaration', value: '转载' } },
+      // 视频分类(页面必选,选项与大鱼号发布页一致)
+      { key: 'category', label: '视频分类', type: 'select', required: true, placeholder: '选择视频分类', options: [
+        { label: '其他', value: '其他' },
+        { label: '社会', value: '社会' },
+        { label: '国内', value: '国内' },
+        { label: '国际', value: '国际' },
+        { label: '体育', value: '体育' },
+        { label: '科技', value: '科技' },
+        { label: '娱乐', value: '娱乐' },
+        { label: '军事', value: '军事' },
+        { label: '财经', value: '财经' },
+        { label: '汽车', value: '汽车' },
+        { label: '房产', value: '房产' },
+        { label: '时尚', value: '时尚' },
+        { label: '健康', value: '健康' },
+        { label: '两性情感', value: '两性情感' },
+        { label: '游戏', value: '游戏' },
+        { label: '动漫', value: '动漫' },
+        { label: '旅游', value: '旅游' },
+        { label: '美食', value: '美食' },
+        { label: '历史', value: '历史' },
+        { label: '奇闻', value: '奇闻' },
+        { label: '科学探索', value: '科学探索' },
+        { label: '星座', value: '星座' },
+        { label: '育儿', value: '育儿' },
+        { label: '教育', value: '教育' },
+        { label: '美女', value: '美女' },
+        { label: '搞笑', value: '搞笑' },
+        { label: '演讲', value: '演讲' },
+        { label: '萌娃', value: '萌娃' },
+        { label: '萌宠', value: '萌宠' },
+        { label: '音乐', value: '音乐' },
+        { label: '语言类', value: '语言类' },
+        { label: '记录短片', value: '记录短片' },
+        { label: '涨姿势', value: '涨姿势' },
+        { label: '劲爆体育', value: '劲爆体育' },
+        { label: '幽默', value: '幽默' },
+        { label: '综艺', value: '综艺' },
+        { label: '电视剧', value: '电视剧' },
+        { label: '电影', value: '电影' },
+        { label: '纪录片', value: '纪录片' },
+        { label: '少儿', value: '少儿' },
+        { label: '文化', value: '文化' },
+        { label: '三农', value: '三农' },
+        { label: '生活方式', value: '生活方式' },
+      ] },
+      { key: 'scheduleTime', label: '定时发布', type: 'datetime', placeholder: '选择时间（7天内，5分钟间隔）',
+        disabledDate: (time) => {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const maxDate = new Date(today);
+          maxDate.setDate(maxDate.getDate() + 7);
+          return time.getTime() < today.getTime() || time.getTime() > maxDate.getTime();
+        },
+        disabledHours: (_role, comparingDate) => {
+          if (!comparingDate) return [];
+          const now = new Date();
+          const d = comparingDate.toDate ? comparingDate.toDate() : comparingDate;
+          const isToday = d.getFullYear() === now.getFullYear()
+            && d.getMonth() === now.getMonth()
+            && d.getDate() === now.getDate();
+          if (!isToday) return [];
+          return Array.from({ length: now.getHours() + 1 }, (_, i) => i);
+        },
+        disabledMinutes: (hour, _role, comparingDate) => {
+          // 大鱼号定时发布只能选 5 分钟间隔(11:05/11:10...)
+          const base = Array.from({ length: 60 }, (_, i) => i).filter(m => m % 5 !== 0)
+          if (!comparingDate) return base
+          const now = new Date()
+          const d = comparingDate.toDate ? comparingDate.toDate() : comparingDate
+          const isToday = d.getFullYear() === now.getFullYear()
+            && d.getMonth() === now.getMonth()
+            && d.getDate() === now.getDate()
+          if (isToday && hour === now.getHours()) {
+            return base.concat(Array.from({ length: now.getMinutes() + 1 }, (_, i) => i))
+          }
+          return base
+        },
+      },
+      { key: 'videoFormat', label: '视频格式', type: 'radio', options: [{ label: '横版', value: 'landscape' }, { label: '竖版', value: 'portrait' }] },
+    ],
+    defaultSettings: { title: '', description: '', creationDeclaration: '', dayuRepostUrl: '', category: '', scheduleTime: '', tags: [] },
+  },
+  // 注: jd (id=20) 已合并到 jingmai (id=19) — 同一个产品 dr.jd.com/jm/
 }
 
 // 派生数据

@@ -46,6 +46,25 @@
           </div>
         </div>
       </el-form-item>
+      <template v-if="showDeclaration">
+        <el-form-item label="作品声明">
+          <el-select v-model="formDeclaration" placeholder="不设置（保持各视频原值）" clearable style="width: 100%">
+            <el-option
+              v-for="opt in DECLARATION_BATCH_OPTIONS"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+          <div class="field-tip">各平台声明文案不同，按统一语义映射为各平台对应选项</div>
+        </el-form-item>
+        <el-form-item label="原创声明">
+          <el-select v-model="formIsOriginal" placeholder="不设置（保持各视频原值）" clearable style="width: 100%">
+            <el-option label="原创" value="true" />
+            <el-option label="非原创" value="false" />
+          </el-select>
+        </el-form-item>
+      </template>
       <el-form-item label="定时发布">
         <el-date-picker
           v-model="formScheduleTime"
@@ -89,6 +108,7 @@
         type="primary"
         plain
         :disabled="checkedCount === 0"
+        title="只覆盖已填写的字段，留空字段保持各视频原值（仅当前视频）"
         @click="handleApply('partial')"
       >
         仅应用已填写
@@ -96,9 +116,19 @@
       <el-button
         type="primary"
         :disabled="checkedCount === 0"
+        title="覆盖全部字段，留空字段清空原值（仅当前视频）"
         @click="handleApply('full')"
       >
         全量应用
+      </el-button>
+      <el-button
+        v-if="showAllVideos"
+        type="warning"
+        :disabled="checkedCount === 0"
+        title="队列中所有视频（含当前视频）全量替换：留空字段也会清空原值"
+        @click="handleApply('full', 'all-videos')"
+      >
+        全视频应用
       </el-button>
     </template>
   </el-dialog>
@@ -107,6 +137,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { DECLARATION_BATCH_OPTIONS } from '@/config/platforms'
 
 const MAX_TAGS = 10
 
@@ -114,6 +145,10 @@ const props = defineProps({
   modelValue: { type: Boolean, required: true },
   platforms: { type: Array, required: true },
   title: { type: String, default: '批量设置' },
+  // 是否显示「全视频应用」按钮（仅视频发布页的视频队列场景开启，图片发布页无队列）
+  showAllVideos: { type: Boolean, default: false },
+  // 是否显示作品声明/原创声明批量字段（视频发布页开启，图集发布页无此需求）
+  showDeclaration: { type: Boolean, default: true },
 })
 
 const emit = defineEmits(['update:modelValue', 'apply'])
@@ -123,6 +158,10 @@ const formDescription = ref('')
 const formTags = ref([])
 const tagInput = ref('')
 const formScheduleTime = ref('')
+// '' = 不设置；'true'/'false' = 原创/非原创（select value 必须是字符串，apply 时转换）
+const formIsOriginal = ref('')
+// '' = 不设置；'none'/'ai' = 不做声明/AI生成
+const formDeclaration = ref('')
 const checkedKeys = ref(new Set())
 
 const checkedCount = computed(() => checkedKeys.value.size)
@@ -134,6 +173,8 @@ watch(() => props.modelValue, (open) => {
     formTags.value = []
     tagInput.value = ''
     formScheduleTime.value = ''
+    formIsOriginal.value = ''
+    formDeclaration.value = ''
     checkedKeys.value = new Set(
       props.platforms.filter(p => p.count > 0).map(p => p.key)
     )
@@ -170,14 +211,20 @@ function removeTag(idx) {
   formTags.value = formTags.value.filter((_, i) => i !== idx)
 }
 
-function handleApply(mode = 'full') {
+function handleApply(mode = 'full', scope = 'current') {
   emit('apply', Array.from(checkedKeys.value), {
     title: formTitle.value,
     description: formDescription.value,
     tags: [...formTags.value],
     scheduleTime: formScheduleTime.value || '',
+    // null = 不设置（跳过该字段）；true/false = 原创/非原创
+    isOriginal: formIsOriginal.value === '' ? null : formIsOriginal.value === 'true',
+    // null/'' = 不设置；'none'/'ai' = 不做声明/AI生成
+    declaration: formDeclaration.value || null,
     // 'full' = 全量覆盖（空值也会清空原值）；'partial' = 仅覆盖已填写字段（空值跳过）
     mode,
+    // scope: 'current' = 仅当前视频；'all-videos' = 队列内所有视频全部替换
+    scope,
   })
   emit('update:modelValue', false)
 }
@@ -277,5 +324,11 @@ function handleApply(mode = 'full') {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.field-tip {
+  font-size: 12px;
+  color: $text-muted;
+  line-height: 1.4;
 }
 </style>

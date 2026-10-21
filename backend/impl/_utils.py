@@ -758,7 +758,12 @@ async def scrape_vivo_profile(page):
     follows = 0  # VIVO 无关注数概念,固定 0
     try:
         await page.wait_for_load_state("domcontentloaded", timeout=10000)
-        await asyncio.sleep(3)
+        # 资料卡渲染出来即抓（等元素，替代固定 sleep(3)）：已渲染时几乎零等待，
+        # 慢加载时最多等 10s，比固定 3s 既快又稳。超时也继续，下方 count() 判空兜底。
+        try:
+            await page.wait_for_selector(".user-info-area .user-name", timeout=10000)
+        except Exception:
+            pass
 
         # 昵称 / 头像
         name_el = page.locator(".user-info-area .user-name").first
@@ -943,9 +948,9 @@ async def scrape_csdn_profile(page):
 
     抓取流程（详见对接文档）：
     1. 当前页应该是 ``https://mp.csdn.net/`` 创作者首页，已登录。
-    2. 等待 ``div.user-info-box``（用户信息卡）出现。
-    3. 昵称：``div.user-info-box p.name``（优先取 ``title`` 属性，兜底 text）。
-    4. 头像：``div.user-info-box .avatar-box img`` 的 ``src``。
+    2. 等待 ``div.home-exp-user-card``（侧边栏用户信息卡）出现。
+    3. 昵称：``.home-exp-user-card__head .name``（优先取 ``title`` 属性，兜底 text）。
+    4. 头像：``.home-exp-user-card__head .avatar-box img`` 的 ``src``。
 
     Returns:
         tuple[str, str]: (user_name, avatar_url)
@@ -958,7 +963,7 @@ async def scrape_csdn_profile(page):
         except Exception:
             pass
         try:
-            await page.locator("div.user-info-box").first.wait_for(
+            await page.locator("div.home-exp-user-card").first.wait_for(
                 state="visible", timeout=15000
             )
         except Exception as e:
@@ -967,7 +972,9 @@ async def scrape_csdn_profile(page):
 
         # 昵称：优先 title 属性（完整名），兜底 text_content
         try:
-            name_el = page.locator("div.user-info-box p.name").first
+            name_el = page.locator(
+                ".home-exp-user-card__head .name"
+            ).first
             if await name_el.count() > 0:
                 name = (await name_el.get_attribute("title") or "").strip()
                 if not name:
@@ -978,7 +985,7 @@ async def scrape_csdn_profile(page):
         # 头像
         try:
             avatar_el = page.locator(
-                "div.user-info-box .avatar-box img"
+                ".home-exp-user-card__head .avatar-box img"
             ).first
             if await avatar_el.count() > 0:
                 avatar = (await avatar_el.get_attribute("src") or "").strip()
@@ -1047,6 +1054,168 @@ async def scrape_weixin_gzh_profile(page):
     return name, avatar
 
 
+async def scrape_taobao_guanghe_profile(page):
+    """淘宝光合平台专用 scraper。
+
+    当前页应为 ``https://creator.guanghe.taobao.com/`` 创作中心首页，已登录。
+
+    DOM 说明：淘宝光合使用 CSS Modules，class 带随机哈希后缀
+    (如 ``user--J5npn8g_``、``count-num--MjNr4IXK``)，**极不稳定**。
+    这里一律改用稳定的埋点属性 ``data-autolog-container`` 定位：
+
+    - 头像：``img[data-autolog-container="user_content_account"]`` 的 ``src``
+    - 昵称：账号管理 info 块内第一个文本节点
+      (该块 ``data-autolog`` 含 ``text=用户模块-账号管理``)
+
+    Returns:
+        tuple[str, str]: (user_name, avatar_url)
+    """
+    name = ""
+    avatar = ""
+    try:
+        await asyncio.sleep(2)
+
+        result = await page.evaluate(
+            '''() => {
+                const out = {name: '', avatar: ''};
+                // 头像：账号管理埋点容器内的 img
+                const avatarImg = document.querySelector('img[data-autolog-container="user_content_account"]');
+                if (avatarImg) out.avatar = avatarImg.getAttribute('src') || '';
+
+                // 昵称：data-autolog 含 "text=用户模块-账号管理" 的 info 块
+                const infoEls = document.querySelectorAll('[data-autolog*="text=用户模块-账号管理"]');
+                for (const el of infoEls) {
+                    // info 块内第一个非空文本即为昵称
+                    const walker = document.createTreeWalker(el, NodeFilter.SHOW_ELEMENT);
+                    let node = walker.nextNode();
+                    while (node) {
+                        // 跳过含二维码/标签的子元素，取第一个有纯文本内容的块级元素
+                        const directText = Array.from(node.childNodes)
+                            .filter(n => n.nodeType === Node.TEXT_NODE)
+                            .map(n => n.textContent.trim())
+                            .join('').trim();
+                        if (directText && directText.length >= 1 && directText.length <= 30
+                            && !directText.includes('账号正常') && !directText.includes('逛逛号')) {
+                            out.name = directText;
+                            break;
+                        }
+                        node = walker.nextNode();
+                    }
+                    if (out.name) break;
+                }
+                return out;
+            }'''
+        )
+        name = (result or {}).get('name', '')
+        avatar = (result or {}).get('avatar', '')
+
+        logger.info(
+            f"[taobao_guanghe] profile scraped - name={name!r} "
+            f"avatar={avatar[:80] if avatar else 'None'}"
+        )
+    except Exception as e:
+        logger.info(f"[taobao_guanghe] profile scrape error: {e}")
+
+    return name, avatar
+
+
+async def scrape_dayu_profile(page):
+    """大鱼号专用 scraper。
+
+    当前页应为 https://mp.dayu.com/dashboard/index 创作中心首页,已登录。
+
+    DOM 说明(对接指南提供,无 hash 的语义 class,稳定可用):
+      - 头像: .header-user 内第一个 img 的 src(//image.uc.cn/... 协议相对地址)
+      - 昵称: .header-info .name 的文本(注意去掉换行/缩进空白)
+
+    Returns:
+        tuple[str, str]: (user_name, avatar_url)
+    """
+    name = ""
+    avatar = ""
+    try:
+        await asyncio.sleep(2)
+
+        # 头像(.header-user 内 img, 36x36)
+        try:
+            avatar_el = page.locator(".header-user img").first
+            if await avatar_el.count() > 0:
+                avatar = (await avatar_el.get_attribute("src") or "").strip()
+                if avatar.startswith("//"):
+                    avatar = "https:" + avatar
+        except Exception as e:
+            logger.info(f"[dayu] 头像抓取失败: {e}")
+
+        # 昵称(.header-info .name, 文本带换行缩进)
+        try:
+            name_el = page.locator(".header-info .name").first
+            if await name_el.count() > 0:
+                name = (await name_el.text_content() or "").strip()
+        except Exception as e:
+            logger.info(f"[dayu] 昵称抓取失败: {e}")
+
+        logger.info(
+            f"[dayu] profile scraped - name={name!r} "
+            f"avatar={avatar[:80] if avatar else 'None'}"
+        )
+    except Exception as e:
+        logger.info(f"[dayu] profile scrape error: {e}")
+
+    return name, avatar
+
+
+async def scrape_jingmai_profile(page):
+    """京东京麦专用 scraper。
+
+    当前页应为 ``https://dr.jd.com/jm/`` 创作中心，已登录。
+
+    DOM 说明：京麦顶栏用无哈希的 BEM class（``shop-menu-accountV1__xxx``），
+    稳定可用；Vue scoped 属性 ``data-v-xxxx`` 带哈希，**不用**。
+
+    - 头像：``.shop-menu-account__right-avatar`` 的 ``src``
+    - 昵称：``.shop-menu-accountV1__right-account-top-name`` 的 ``title`` 属性
+      (兜底 text_content)
+
+    Returns:
+        tuple[str, str]: (user_name, avatar_url)
+    """
+    name = ""
+    avatar = ""
+    try:
+        await asyncio.sleep(2)
+
+        # 头像
+        try:
+            avatar_el = page.locator(".shop-menu-account__right-avatar").first
+            if await avatar_el.count() > 0:
+                avatar = (await avatar_el.get_attribute("src") or "").strip()
+                if avatar.startswith("//"):
+                    avatar = "https:" + avatar
+        except Exception as e:
+            logger.info(f"[jingmai] 头像抓取失败: {e}")
+
+        # 昵称
+        try:
+            name_el = page.locator(
+                ".shop-menu-accountV1__right-account-top-name"
+            ).first
+            if await name_el.count() > 0:
+                name = (await name_el.get_attribute("title") or "").strip()
+                if not name:
+                    name = (await name_el.text_content() or "").strip()
+        except Exception as e:
+            logger.info(f"[jingmai] 昵称抓取失败: {e}")
+
+        logger.info(
+            f"[jingmai] profile scraped - name={name!r} "
+            f"avatar={avatar[:80] if avatar else 'None'}"
+        )
+    except Exception as e:
+        logger.info(f"[jingmai] profile scrape error: {e}")
+
+    return name, avatar
+
+
 # ---------------------------------------------------------------------------
 # Schedule time parser
 # Source: original postVideo.py schedule parser
@@ -1109,6 +1278,31 @@ def parse_schedule_time(schedule_time_str, total_files, enableTimer,
 # ---------------------------------------------------------------------------
 # Unified post-login flow
 # ---------------------------------------------------------------------------
+
+def raise_if_page_closed(page, action: str = "发布"):
+    """页面/浏览器已被用户关闭时抛 RuntimeError，供各平台等待循环每轮调用。
+
+    背景：发布等待循环里的 ``except Exception: pass`` 会把浏览器关闭后
+    Playwright 抛的异常全部吞掉空转，任务在队列里卡「发布中」直到超时
+    （_browser.py 的 watchdog 在 CloakBrowser 代理下未必可靠）。这里用
+    同步属性 ``page.is_closed()`` 做页面级兜底判定：用户关浏览器/关标签页
+    后下一轮轮询立即抛错 → 任务判 FAILED，前端马上显示发布失败。
+
+    兼容 Page 与 Frame：淘宝光合发布表单在 iframe（Frame）里，等待函数
+    经常拿到 Frame 对象；Frame 没有 ``is_closed()``，用 ``is_detached()`` 判定。
+    """
+    try:
+        if hasattr(page, "is_closed"):
+            closed = page.is_closed()
+        else:
+            closed = page.is_detached()
+    except Exception as exc:
+        raise RuntimeError(
+            f"[{action}] 页面状态不可用(浏览器可能已关闭): {exc}"
+        ) from exc
+    if closed:
+        raise RuntimeError(f"[{action}] 页面已被关闭(用户手动关闭浏览器)")
+
 
 async def save_login_result(
     context,
@@ -1269,6 +1463,9 @@ PLATFORM_SYNC_URLS = {
     15: "https://mp.csdn.net/",
     16: "https://www.kaixinkan.com.cn/#/home",
     17: "https://mp.weixin.qq.com/",
+    18: "https://creator.guanghe.taobao.com/",
+    19: "https://dr.jd.com/jm/",
+    21: "https://mp.dayu.com/dashboard/index",
 }
 
 
@@ -1292,6 +1489,9 @@ PLATFORM_SCRAPE_FNS = {
     15: scrape_csdn_profile,        # CSDN
     16: scrape_vivo_profile,        # VIVO
     17: scrape_weixin_gzh_profile,  # 微信公众号
+    18: scrape_taobao_guanghe_profile,  # 淘宝光合
+    19: scrape_jingmai_profile,     # 京东京麦
+    21: scrape_dayu_profile,        # 大鱼号
 }
 
 

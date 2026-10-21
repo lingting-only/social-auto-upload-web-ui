@@ -31,8 +31,9 @@ export class BackendClient {
     return url.toString();
   }
 
-  async get<T = any>(path: string, params?: Record<string, string>): Promise<ApiResponse<T>> {
-    const response: AxiosResponse<ApiResponse<T>> = await this.http.get(path, { params });
+  async get<T = any>(path: string, params?: Record<string, string>, timeout?: number): Promise<ApiResponse<T>> {
+    const config = timeout ? { params, timeout } : { params };
+    const response: AxiosResponse<ApiResponse<T>> = await this.http.get(path, config);
     return response.data;
   }
 
@@ -150,6 +151,12 @@ export class BackendClient {
 
   async delete<T = any>(path: string): Promise<ApiResponse<T>> {
     const response: AxiosResponse<ApiResponse<T>> = await this.http.delete(path);
+    return response.data;
+  }
+
+  /** DELETE 携带请求体（后端批量删除接口按 body 传 id 列表） */
+  async deleteWithBody<T = any>(path: string, data?: any): Promise<ApiResponse<T>> {
+    const response: AxiosResponse<ApiResponse<T>> = await this.http.delete(path, { data });
     return response.data;
   }
 
